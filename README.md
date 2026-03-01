@@ -1,110 +1,104 @@
 # mcp-prompt-bridge
 
-**MCPのpromptsをtoolsとして再公開するMCPサーバー**
+**An MCP server that re-exposes other MCP servers' prompts as tools**
 
-Claude CodeがMCPサーバーのpromptsを認識しない問題（[#11054](https://github.com/anthropics/claude-code/issues/11054), [#3210](https://github.com/anthropics/claude-code/issues/3210)）のワークアラウンドです。
+Workaround for Claude Code not being able to see MCP prompts ([#11054](https://github.com/anthropics/claude-code/issues/11054), [#3210](https://github.com/anthropics/claude-code/issues/3210)).
 
-## 仕組み
+## How It Works
 
 ```
 [Claude Code]
-    ↓ tools として呼び出し
-[mcp-prompt-bridge]  ← このサーバー
-    ↓ MCP client として接続（オンデマンド）
-[既存のMCPサーバーA] [MCPサーバーB] ...
-    prompts/list → 一覧取得
-    prompts/get  → 内容取得して返却
+    ↓ calls as tools
+[mcp-prompt-bridge]
+    ↓ connects as MCP client (on demand)
+[Upstream MCP Server A] [Server B] ...
+    prompts/list → discover prompts
+    prompts/get  → fetch and return
 ```
 
-上流サーバーへの接続は常時ではなく、`list` / `get` が呼ばれたときだけ接続→取得→切断します。
+Connections to upstream servers are on demand — the bridge connects only when `list` / `get` is called, then disconnects immediately.
 
-## セットアップ
-
-```bash
-npm install
-npm run build
-```
-
-## 使い方
-
-Claude Codeの設定ファイル（`.mcp.json`, `~/.claude.json` 等）から
-MCPサーバーを自動的に発見し、プロンプトをツールとして公開します。
-
-### Claude Codeへの登録
-
-`.mcp.json` に追加：
+## Usage
 
 ```json
 {
   "mcpServers": {
     "prompt-bridge": {
-      "command": "node",
-      "args": ["/path/to/mcp-prompt-bridge/dist/index.js"]
+      "command": "npx",
+      "args": ["mcp-prompt-bridge"]
     }
   }
 }
 ```
 
-CLIから：
+Or via CLI:
 
 ```bash
-claude mcp add prompt-bridge -- node /path/to/mcp-prompt-bridge/dist/index.js
+claude mcp add prompt-bridge -- npx mcp-prompt-bridge
 ```
 
-### 特定のサーバーを除外
+### Excluding Specific Servers
 
-```bash
-node dist/index.js --exclude slow-server --exclude broken-server
+```json
+{
+  "mcpServers": {
+    "prompt-bridge": {
+      "command": "npx",
+      "args": ["mcp-prompt-bridge", "--exclude", "slow-server"]
+    }
+  }
+}
 ```
 
-### サーバー発見の仕組み
+## Server Discovery
 
-以下の設定ファイルを順番に読み込みます（後のものが優先）：
+Reads Claude Code config files in priority order (later entries override earlier ones):
 
-1. `~/.claude.json` — ユーザースコープ（cwdに対応するプロジェクト設定も読み込み）
-2. `~/.claude/settings.local.json` — ユーザーローカル
-3. `./.mcp.json` — プロジェクトスコープ
-4. `./.claude/settings.local.json` — プロジェクトローカル
+1. `~/.claude.json` — user scope (including project-scoped entries under `projects[cwd]`)
+2. `~/.claude/settings.local.json` — user local
+3. `./.mcp.json` — project scope
+4. `./.claude/settings.local.json` — project local
 
-設定ファイルが見つからない場合は `claude mcp list` の出力をパースします。
+Falls back to parsing `claude mcp list` output if no config files are found.
 
-### 安全機能
+## Safety
 
-- **自己排除**: 自身と同じ実行パスを持つサーバーを自動スキップ（循環接続防止）
-- **HTTP除外**: HTTPトランスポートのサーバーはスキップ（stdioのみ対応）
-- **プロンプト非対応サーバー**: エラーにならず静かにスキップ
-- **タイムアウト**: 接続は10秒でタイムアウト
-- **オンデマンド接続**: 起動時にサーバーを立ち上げず、ツール呼び出し時のみ接続
+- **Self-exclusion**: automatically skips servers with the same entry point path (prevents circular connections)
+- **HTTP filtering**: HTTP/SSE transport servers are skipped (stdio only)
+- **Graceful handling**: servers that don't support prompts are silently skipped
+- **Timeout**: connections time out after 10 seconds
+- **On-demand connections**: no servers are spawned at startup
 
-## 公開されるツール
+## Exposed Tools
 
 ### `list`
 
-全サーバーの全プロンプト一覧を返します（サーバー名、プロンプト名、説明、引数を含む）。
+Without arguments: returns available server names (no connection needed).
+With `server` argument: connects to that server and returns its prompts.
 
 ### `get`
 
-特定のプロンプトを取得します。
+Fetches a specific prompt from an upstream server.
 
-| 引数 | 説明 |
-|------|------|
-| `server` | MCPサーバー名 |
-| `prompt` | プロンプト名 |
-| `arguments` | プロンプト引数（key-valueペア、省略可） |
+| Argument | Description |
+|----------|-------------|
+| `server` | MCP server name |
+| `prompt` | Prompt name |
+| `arguments` | Prompt arguments as key-value pairs (optional) |
 
-## CLI オプション
+## CLI Options
 
-| オプション | 説明 |
-|-----------|------|
-| `--exclude <name>` | 除外するサーバー名（複数指定可） |
-| `--help`, `-h` | ヘルプ表示 |
+| Option | Description |
+|--------|-------------|
+| `--exclude <name>` | Exclude a server by name (repeatable) |
+| `--help`, `-h` | Show help |
 
-## 制限事項
+## Limitations
 
-- stdioトランスポートのみ対応（HTTP/SSEサーバーは非対応）
-- プロンプトの動的更新には未対応（再起動が必要）
-- バイナリリソースを含むプロンプトはメタデータのみ表示
+- stdio transport only (HTTP/SSE servers not supported)
+- No dynamic prompt refresh (restart required)
+- Binary resource content in prompts shows metadata only
 
-## ライセンス
+## License
 
 MIT
