@@ -1,11 +1,15 @@
 {
   "name": "mcp-prompt-bridge",
   "version": "1.0.0",
-  "description": "Proxy MCP server that exposes other MCP servers' prompts as tools",
+  "description": "MCP server that re-exposes upstream MCP prompts as tools",
   "main": "dist/index.js",
   "bin": {
     "mcp-prompt-bridge": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
