@@ -1,6 +1,6 @@
 {
   "name": "mcp-prompt-bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server that re-exposes upstream MCP prompts as tools",
   "main": "dist/index.js",
   "bin": {
