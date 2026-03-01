@@ -15,6 +15,16 @@
     "start": "node dist/index.js",
     "dev": "tsc --watch"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/signal-slot/mcp-prompt-bridge.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "prompts",
+    "claude-code"
+  ],
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
